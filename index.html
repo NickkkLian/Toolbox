@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具箱 Toolbox</title>
+<style>
+:root{
+  --bg:#F7F6F3; --card:#FFFFFF; --ink:#1F1D1A; --muted:#8A857C; --line:#E8E4DC;
+  --accent:#C4552A; --ok:#2E7D52; --warn:#B7791F; --bad:#B3392E; --code:#F1EEE8;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-size:15px;line-height:1.6}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:100%}
+header{display:flex;align-items:center;gap:12px;padding:18px 22px;flex-wrap:wrap}
+header h1{font-size:22px;letter-spacing:1px}
+header .spacer{flex:1}
+.btn{padding:8px 16px;border-radius:10px;background:var(--card);border:1px solid var(--line);font-weight:500}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+#wrap{display:flex;gap:16px;padding:0 22px 60px;align-items:flex-start}
+#side{width:280px;flex:none;position:sticky;top:14px}
+#side .doc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer;transition:box-shadow .15s}
+#side .doc:hover{box-shadow:0 4px 14px rgba(0,0,0,.07)}
+#side .doc.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+#side .doc .nm{font-weight:600;font-size:14.5px}
+#side .doc .ds{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.45}
+#main{flex:1;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px 32px}
+.empty{color:var(--muted);padding:60px 22px;text-align:center}
+/* markdown */
+#main h1{font-size:24px;margin:6px 0 14px}
+#main h2{font-size:19px;margin:26px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+#main h3{font-size:16.5px;margin:20px 0 8px}
+#main h4{font-size:15px;margin:16px 0 6px}
+#main p{margin:9px 0}
+#main ul,#main ol{margin:9px 0;padding-left:26px}
+#main li{margin:4px 0}
+#main blockquote{border-left:3px solid var(--accent);background:var(--bg);padding:8px 14px;margin:12px 0;border-radius:0 8px 8px 0;color:#4c4842}
+#main code{background:var(--code);border-radius:5px;padding:1px 6px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+#main pre{background:var(--code);border-radius:10px;padding:14px;overflow-x:auto;margin:12px 0}
+#main pre code{background:none;padding:0}
+#main table{width:100%;border-collapse:collapse;font-size:13.5px;margin:12px 0;display:block;overflow-x:auto}
+#main th,#main td{padding:7px 9px;border:1px solid var(--line);text-align:left;vertical-align:top}
+#main th{background:var(--bg);color:var(--muted);font-weight:600;font-size:12.5px;white-space:nowrap}
+#main a{color:var(--accent)}
+#main hr{border:none;border-top:1px solid var(--line);margin:18px 0}
+#main .meta{color:var(--muted);font-size:12.5px;margin-bottom:14px}
+/* config */
+#cfg{max-width:520px;margin:40px auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px;display:none}
+#cfg.show{display:block}
+#cfg .row{margin-bottom:12px}
+#cfg label{font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px}
+.notif{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);background:var(--ink);color:#fff;padding:10px 22px;border-radius:10px;opacity:0;transition:.25s;pointer-events:none;z-index:99}
+.notif.show{opacity:1;transform:translate(-50%,0)}
+.notif.err{background:var(--bad)} .notif.ok{background:var(--ok)}
+@media(max-width:760px){
+  #wrap{flex-direction:column}
+  #side{width:100%;position:static;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+  #side .doc{margin-bottom:0}
+  #main{padding:20px 16px;width:100%}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1 data-i18n="title">工具箱</h1>
+  <span class="spacer"></span>
+  <button class="btn" onclick="refresh()" data-i18n="refresh">↻ 刷新</button>
+  <button class="btn" onclick="toggleCfg()">⚙️</button>
+  <button class="btn" onclick="toggleLang()">🌐</button>
+</header>
+
+<div id="cfg">
+  <div class="row"><label>Owner</label><input id="cfg-own"></div>
+  <div class="row"><label>Repo（私有数据仓库）</label><input id="cfg-rep" placeholder="Database"></div>
+  <div class="row"><label>Token</label><input id="cfg-tok" type="password"></div>
+  <div class="row"><label>Path（文档目录）</label><input id="cfg-pa" value="toolbox"></div>
+  <button class="btn primary" onclick="connect()" data-i18n="connect">连接</button>
+</div>
+
+<div id="app" style="display:none">
+  <div id="wrap">
+    <div id="side"></div>
+    <div id="main"><div class="empty" data-i18n="pick">← 选择一个主题档</div></div>
+  </div>
+</div>
+<div class="notif" id="notif"></div>
+
+<script>
+/* ═══ 双语（与导航站共享 pha-lang）═══ */
+let lang=(()=>{try{return localStorage.getItem("pha-lang")==="en"?"en":"zh"}catch(e){return "zh"}})();
+const DICT={
+  title:["工具箱","Toolbox"],refresh:["↻ 刷新","↻ Refresh"],connect:["连接","Connect"],
+  pick:["← 选择一个主题档","← Pick a topic doc"],sop:["整理归纳 SOP（本库说明）","Curation SOP (about this vault)"],
+  connectFirst:["请先连接 GitHub","Connect GitHub first"],loading:["加载中…","Loading…"],
+  refreshed:["已刷新","Refreshed"],loadFail:["加载失败","Load failed"],
+  empty:["Database 的 toolbox/ 目录还没有文档","No docs in Database toolbox/ yet"],
+  updated:["更新于","Updated"]
+};
+const T=k=>(DICT[k]||[k,k])[lang==="en"?1:0];
+function applyStatic(){document.querySelectorAll("[data-i18n]").forEach(el=>{el.textContent=T(el.dataset.i18n)});document.title=lang==="en"?"Toolbox":"工具箱 Toolbox";}
+function toggleLang(){lang=lang==="zh"?"en":"zh";try{localStorage.setItem("pha-lang",lang)}catch(e){}applyStatic();renderSide();}
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+let S={cfg:null,list:[],docs:{},cur:null,idx:{}};
+
+/* ═══ GitHub 读取（全家标准 idiom：UTF-8 安全 base64；本 app 只读不写）═══ */
+async function ghApi(url){
+  const r=await fetch(url,{headers:{Authorization:`token ${S.cfg.token}`,Accept:"application/vnd.github+json"}});
+  if(!r.ok)throw new Error(`${r.status} ${(await r.text()).slice(0,120)}`);
+  return r.json();
+}
+const b64utf8=c=>new TextDecoder().decode(Uint8Array.from(atob(c.replace(/\n/g,"")),ch=>ch.charCodeAt(0)));
+
+async function loadList(){
+  const {owner,repo,path}=S.cfg;
+  const dir=await ghApi(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?_=${Date.now()}`);
+  const files=dir.filter(f=>f.type==="file"&&/\.md$/i.test(f.name));
+  /* INDEX.md 提供描述；README 置顶；INDEX 本身不列（它就是侧栏） */
+  S.idx={};
+  const idxFile=files.find(f=>f.name.toUpperCase()==="INDEX.MD");
+  if(idxFile){
+    try{
+      const raw=b64utf8((await ghApi(idxFile.url)).content);
+      raw.split("\n").forEach(l=>{
+        const m=l.match(/^\s*-\s*\[.*?\]\((.*?)\)\s*(?:—|-)\s*(.*)$/);
+        if(m)S.idx[m[1].trim()]=m[2].trim();
+      });
+    }catch(e){}
+  }
+  const rest=files.filter(f=>!/^(INDEX)\.md$/i.test(f.name)&&!/^README\.md$/i.test(f.name))
+                  .sort((a,b)=>a.name.localeCompare(b.name));
+  const readme=files.find(f=>/^README\.md$/i.test(f.name));
+  S.list=[...(readme?[readme]:[]),...rest].map(f=>({name:f.name,path:f.path,sha:f.sha}));
+  try{localStorage.setItem("toolbox_cache",JSON.stringify({list:S.list,idx:S.idx,docs:S.docs}))}catch(e){}
+}
+async function loadDoc(name,force=false){
+  const item=S.list.find(f=>f.name===name); if(!item)return;
+  S.cur=name; renderSide();
+  const cached=S.docs[name];
+  if(cached&&!force){renderDoc(name);}
+  else{
+    document.getElementById("main").innerHTML=`<div class="empty">${T("loading")}</div>`;
+    try{
+      const {owner,repo}=S.cfg;
+      const f=await ghApi(`https://api.github.com/repos/${owner}/${repo}/contents/${item.path}?_=${Date.now()}`);
+      S.docs[name]=b64utf8(f.content);
+      try{localStorage.setItem("toolbox_cache",JSON.stringify({list:S.list,idx:S.idx,docs:S.docs}))}catch(e){}
+      renderDoc(name);
+    }catch(e){document.getElementById("main").innerHTML=`<div class="empty">${T("loadFail")}: ${esc(e.message)}</div>`;}
+  }
+}
+
+/* ═══ 精简 Markdown 渲染（覆盖本库子集：标题/列表/表格/代码/引用/链接/粗斜体/hr）═══ */
+function inline(s){
+  s=s.replace(/`([^`]+)`/g,(m,c)=>`<code>${c}</code>`);
+  s=s.replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>").replace(/(^|[^*])\*([^*\s][^*]*)\*/g,"$1<i>$2</i>");
+  s=s.replace(/\[([^\]]+)\]\(([^)]+)\)/g,(m,t,u)=>{
+    if(/^[\w.\-]+\.md$/i.test(u))return `<a href="#" onclick="loadDoc('${u.replace(/'/g,"")}');return false">${t}</a>`;
+    if(/^https?:/i.test(u))return `<a href="${u}" target="_blank" rel="noopener">${t}</a>`;
+    return t;
+  });
+  return s;
+}
+function mdRender(md){
+  const lines=md.split("\n"); const out=[]; let i=0;
+  const isTableSep=l=>/^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(l)&&l.includes("-");
+  while(i<lines.length){
+    let l=lines[i];
+    if(/^\s*```/.test(l)){ /* 代码块 */
+      const buf=[]; i++;
+      while(i<lines.length&&!/^\s*```/.test(lines[i])){buf.push(lines[i]);i++;}
+      i++; out.push(`<pre><code>${esc(buf.join("\n"))}</code></pre>`); continue;
+    }
+    if(/^#{1,4}\s/.test(l)){const n=l.match(/^#+/)[0].length;out.push(`<h${n}>${inline(esc(l.replace(/^#+\s*/,"")))}</h${n}>`);i++;continue;}
+    if(/^\s*(---+|\*\*\*+)\s*$/.test(l)){out.push("<hr>");i++;continue;}
+    if(/^\s*>/.test(l)){
+      const buf=[];while(i<lines.length&&/^\s*>/.test(lines[i])){buf.push(lines[i].replace(/^\s*>\s?/,""));i++;}
+      out.push(`<blockquote>${mdRender(buf.join("\n"))}</blockquote>`);continue;
+    }
+    if(l.includes("|")&&i+1<lines.length&&isTableSep(lines[i+1])){ /* 表格 */
+      const row=r=>r.replace(/^\s*\|/,"").replace(/\|\s*$/,"").split("|").map(c=>inline(esc(c.trim())));
+      const head=row(l); i+=2; const body=[];
+      while(i<lines.length&&lines[i].includes("|")&&lines[i].trim()!==""){body.push(row(lines[i]));i++;}
+      out.push(`<table><thead><tr>${head.map(c=>`<th>${c}</th>`).join("")}</tr></thead><tbody>`+
+        body.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("")+`</tbody></table>`);continue;
+    }
+    let m=l.match(/^(\s*)([-*]|\d+[.、])\s+(.*)$/);
+    if(m){ /* 列表（含续行：更深缩进的普通行并入上一项） */
+      const ordered=/^\d/.test(m[2]); const items=[];
+      while(i<lines.length){
+        const lm=lines[i].match(/^(\s*)([-*]|\d+[.、])\s+(.*)$/);
+        if(lm&&/^\d/.test(lm[2])!==ordered)break;
+        if(lm){items.push(lm[3]);i++;}
+        else if(/^\s{2,}\S/.test(lines[i])&&items.length){items[items.length-1]+=" "+lines[i].trim();i++;}
+        else break;
+      }
+      out.push(`<${ordered?"ol":"ul"}>${items.map(t=>`<li>${inline(esc(t))}</li>`).join("")}</${ordered?"ol":"ul"}>`);continue;
+    }
+    if(l.trim()===""){i++;continue;}
+    const buf=[l];i++;
+    while(i<lines.length&&lines[i].trim()!==""&&!/^(#{1,4}\s|\s*```|\s*>|\s*([-*]|\d+[.、])\s|\s*(---+|\*\*\*+)\s*$)/.test(lines[i])&&!(lines[i].includes("|")&&i+1<lines.length&&isTableSep(lines[i+1]))){buf.push(lines[i]);i++;}
+    out.push(`<p>${inline(esc(buf.join(" ")))}</p>`);
+  }
+  return out.join("\n");
+}
+
+/* ═══ 渲染 ═══ */
+function dispName(f){
+  if(/^README\.md$/i.test(f.name))return T("sop");
+  const md=S.docs[f.name];
+  if(md){const m=md.match(/^#\s+(.+)$/m);if(m)return m[1].trim();}
+  return f.name.replace(/\.md$/i,"");
+}
+function renderSide(){
+  const el=document.getElementById("side");
+  el.innerHTML=S.list.length?S.list.map(f=>`
+    <div class="doc ${S.cur===f.name?"on":""}" onclick="loadDoc('${esc(f.name)}')">
+      <div class="nm">${/^README/i.test(f.name)?"📖 ":"📁 "}${esc(dispName(f))}</div>
+      ${S.idx[f.name]?`<div class="ds">${esc(S.idx[f.name])}</div>`:""}
+    </div>`).join(""):`<div class="empty">${T("empty")}</div>`;
+}
+function renderDoc(name){
+  document.getElementById("main").innerHTML=mdRender(S.docs[name]||"");
+  renderSide();
+}
+async function refresh(){
+  if(!S.cfg?.token){notify(T("connectFirst"),"err");return;}
+  try{S.docs={};await loadList();renderSide();if(S.cur)await loadDoc(S.cur,true);notify(T("refreshed"),"ok");}
+  catch(e){notify(T("loadFail")+": "+e.message,"err");}
+}
+
+/* ═══ 连接 & 启动 ═══ */
+function toggleCfg(){document.getElementById("cfg").classList.toggle("show");}
+async function connect(){
+  const v=id=>document.getElementById(id).value.trim();
+  const c={owner:v("cfg-own"),repo:v("cfg-rep")||"Database",token:v("cfg-tok"),path:v("cfg-pa")||"toolbox"};
+  try{localStorage.setItem("toolbox_cfg",JSON.stringify(c))}catch(e){}
+  S.cfg=c;
+  try{await loadList();}catch(e){notify("连接失败 "+e.message,"err");return;}
+  document.getElementById("cfg").classList.remove("show");
+  showApp();
+}
+function showApp(){
+  document.getElementById("app").style.display="block";
+  renderSide();
+  if(!S.cur&&S.list.length)loadDoc(S.list[0].name);
+}
+let _nt;
+function notify(msg,type=""){const el=document.getElementById("notif");el.textContent=msg;el.className=`notif show ${type}`;clearTimeout(_nt);_nt=setTimeout(()=>el.classList.remove("show"),2600);}
+
+applyStatic();
+(async()=>{
+  try{
+    const c=JSON.parse(localStorage.getItem("toolbox_cfg")||"{}");
+    /* [hub-portal] 从共享配置 pha-config 补全 owner/repo/token（仅填空缺，不覆盖已填，不改 path） */
+    try{var _pha=JSON.parse(localStorage.getItem("pha-config")||"null");if(_pha){if(!c.owner&&_pha.owner)c.owner=_pha.owner;if(!c.repo&&_pha.repo)c.repo=_pha.repo;if(!c.token&&_pha.token)c.token=_pha.token;}}catch(e){}
+    if(c.owner)document.getElementById("cfg-own").value=c.owner;
+    if(c.repo)document.getElementById("cfg-rep").value=c.repo;
+    if(c.token)document.getElementById("cfg-tok").value=c.token;
+    if(c.path)document.getElementById("cfg-pa").value=c.path;
+    /* 本地缓存秒开，连接后刷新覆盖 */
+    try{const cache=JSON.parse(localStorage.getItem("toolbox_cache")||"null");
+      if(cache&&cache.list){S.list=cache.list;S.idx=cache.idx||{};S.docs=cache.docs||{};document.getElementById("app").style.display="block";renderSide();if(S.list.length)loadDoc(S.list[0].name);}}catch(e){}
+    if(c.token&&c.owner){
+      S.cfg={owner:c.owner,repo:c.repo||"Database",token:c.token,path:c.path||"toolbox"};
+      await loadList();
+      showApp();
+    }else if(!S.list.length){document.getElementById("cfg").classList.add("show");}
+  }catch(e){console.warn("Auto-connect failed:",e);if(!S.list.length){document.getElementById("cfg").classList.add("show");}}
+})();
+</script>
+</body>
+</html>
