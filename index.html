@@ -25,6 +25,17 @@ header .spacer{flex:1}
 #side .doc.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
 #side .doc .nm{font-weight:600;font-size:14.5px}
 #side .doc .ds{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.45}
+#sbox{position:relative;margin-bottom:10px}
+#sbox input{width:100%;padding:9px 30px 9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);font:inherit;font-size:13.5px;color:inherit}
+#sbox input:focus{outline:none;border-color:var(--accent)}
+#qx{position:absolute;right:9px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);display:none;font-size:13px;padding:2px 4px}
+#sbox.has #qx{display:block}
+#side .doc .hit{float:right;background:var(--accent);color:#fff;border-radius:999px;padding:0 7px;font-size:11px;font-weight:600;line-height:17px}
+.sr{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:12px}
+.sr .t{font-weight:600;font-size:14.5px;cursor:pointer;color:var(--accent)}
+.sr .ln{font-size:12.5px;line-height:1.65;padding:5px 0;border-top:1px solid var(--line);cursor:pointer;color:var(--muted);white-space:pre-wrap;word-break:break-word}
+.sr .ln:hover{color:var(--ink,inherit)}
+mark{background:rgba(212,175,55,.4);color:inherit;border-radius:2px;padding:0 1px}
 #main{flex:1;min-width:0;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:28px 32px}
 .empty{color:var(--muted);padding:60px 22px;text-align:center}
 /* markdown */
@@ -55,7 +66,8 @@ header .spacer{flex:1}
 .notif.err{background:var(--bad)} .notif.ok{background:var(--ok)}
 @media(max-width:760px){
   #wrap{flex-direction:column}
-  #side{width:100%;position:static;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+  #side{width:100%;position:static}
+  #doclist{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
   #side .doc{margin-bottom:0}
   #main{padding:20px 16px;width:100%}
 }
@@ -80,7 +92,10 @@ header .spacer{flex:1}
 
 <div id="app" style="display:none">
   <div id="wrap">
-    <div id="side"></div>
+    <div id="side">
+      <div id="sbox"><input id="q" oninput="onSearch()" data-i18n-ph="searchPh" placeholder="搜索库内全文…"><span id="qx" onclick="clearSearch()">✕</span></div>
+      <div id="doclist"></div>
+    </div>
     <div id="main"><div class="empty" data-i18n="pick">← 选择一个主题档</div></div>
   </div>
 </div>
@@ -95,10 +110,14 @@ const DICT={
   connectFirst:["请先连接 GitHub","Connect GitHub first"],loading:["加载中…","Loading…"],
   refreshed:["已刷新","Refreshed"],loadFail:["加载失败","Load failed"],
   empty:["Database 的 toolbox/ 目录还没有文档","No docs in Database toolbox/ yet"],
-  updated:["更新于","Updated"]
+  updated:["更新于","Updated"],
+  searchPh:["搜索库内全文…","Search all docs…"],
+  srHead:["条命中","hits"],srNone:["没有匹配","No matches"],srIn:["在","in"],
+  srTip:["点任意一行跳到原文","Click any line to jump to it"]
 };
 const T=k=>(DICT[k]||[k,k])[lang==="en"?1:0];
-function applyStatic(){document.querySelectorAll("[data-i18n]").forEach(el=>{el.textContent=T(el.dataset.i18n)});document.title=lang==="en"?"Toolbox":"工具箱 Toolbox";}
+function applyStatic(){document.querySelectorAll("[data-i18n]").forEach(el=>{el.textContent=T(el.dataset.i18n)});
+  document.querySelectorAll("[data-i18n-ph]").forEach(el=>{el.placeholder=T(el.dataset.i18nPh)});document.title=lang==="en"?"Toolbox":"工具箱 Toolbox";}
 function toggleLang(){lang=lang==="zh"?"en":"zh";try{localStorage.setItem("pha-lang",lang)}catch(e){}applyStatic();renderSide();}
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
@@ -110,6 +129,7 @@ async function ghApi(url){
   if(!r.ok)throw new Error(`${r.status} ${(await r.text()).slice(0,120)}`);
   return r.json();
 }
+/* S.q = 当前搜索词（空＝未搜索） */
 const b64utf8=c=>new TextDecoder().decode(Uint8Array.from(atob(c.replace(/\n/g,"")),ch=>ch.charCodeAt(0)));
 
 async function loadList(){
@@ -213,20 +233,101 @@ function dispName(f){
   return f.name.replace(/\.md$/i,"");
 }
 function renderSide(){
-  const el=document.getElementById("side");
-  el.innerHTML=S.list.length?S.list.map(f=>`
+  const el=document.getElementById("doclist");
+  const hits=S.q?Object.fromEntries(searchHits(S.q).map(r=>[r.name,r.hits.length])):null;
+  const list=hits?S.list.filter(f=>hits[f.name]):S.list;
+  el.innerHTML=list.length?list.map(f=>`
     <div class="doc ${S.cur===f.name?"on":""}" onclick="loadDoc('${esc(f.name)}')">
-      <div class="nm">${/^README/i.test(f.name)?"📖 ":"📁 "}${esc(dispName(f))}</div>
+      <div class="nm">${hits?`<span class="hit">${hits[f.name]}</span>`:""}${/^README/i.test(f.name)?"📖 ":"📁 "}${esc(dispName(f))}</div>
       ${S.idx[f.name]?`<div class="ds">${esc(S.idx[f.name])}</div>`:""}
-    </div>`).join(""):`<div class="empty">${T("empty")}</div>`;
+    </div>`).join(""):`<div class="empty">${S.q?T("srNone"):T("empty")}</div>`;
 }
 function renderDoc(name){
   document.getElementById("main").innerHTML=mdRender(S.docs[name]||"");
+  if(S.q)highlightIn(document.getElementById("main"),S.q);   // 从搜索结果点进来时保留高亮
   renderSide();
 }
+
+/* ═══ 库内全文搜索 ═══
+   跨档搜必须先把所有文档取回来（每档几 KB，一次拉完；之后走 localStorage 缓存）。
+   搜的是**原始 markdown**（所见即所搜），高亮打在**渲染后的 DOM 文本节点**上——
+   直接对 HTML 串做 replace 会打碎标签。 */
+async function loadAllDocs(){
+  const miss=S.list.filter(f=>!S.docs[f.name]);
+  if(!miss.length)return;
+  const {owner,repo}=S.cfg;
+  await Promise.all(miss.map(async f=>{
+    try{const r=await ghApi(`https://api.github.com/repos/${owner}/${repo}/contents/${f.path}?_=${Date.now()}`);S.docs[f.name]=b64utf8(r.content);}catch(e){}
+  }));
+  try{localStorage.setItem("toolbox_cache",JSON.stringify({list:S.list,idx:S.idx,docs:S.docs}))}catch(e){}
+}
+function searchHits(q){
+  const out=[];const needle=(q||"").trim().toLowerCase();if(!needle)return out;
+  S.list.forEach(f=>{
+    const md=S.docs[f.name];if(!md)return;
+    const hits=[];
+    md.split("\n").forEach((l,i)=>{
+      const t=l.trim();
+      if(t&&t.toLowerCase().includes(needle))hits.push({i,text:t});
+    });
+    // 文件名与 INDEX 描述也算命中（找得到「用途」那句话）
+    const meta=(dispName(f)+" "+(S.idx[f.name]||"")).toLowerCase();
+    if(!hits.length&&meta.includes(needle))hits.push({i:0,text:S.idx[f.name]||f.name});
+    if(hits.length)out.push({name:f.name,hits});
+  });
+  return out;
+}
+function esc2(s){return esc(s);}
+function renderResults(q){
+  const res=searchHits(q);
+  const total=res.reduce((n,r)=>n+r.hits.length,0);
+  const main=document.getElementById("main");
+  if(!res.length){main.innerHTML=`<div class="empty">${T("srNone")}：${esc(q)}</div>`;return;}
+  main.innerHTML=`<div style="color:var(--muted);font-size:12.5px;margin-bottom:12px">${total} ${T("srHead")} · ${T("srIn")} ${res.length} ${lang==="en"?"docs":"个档"} · ${T("srTip")}</div>`+
+    res.map(r=>`<div class="sr">
+      <div class="t" onclick="openHit('${esc(r.name)}',0)">${/^README/i.test(r.name)?"📖 ":"📁 "}${esc(dispName({name:r.name}))} <span style="color:var(--muted);font-weight:400">· ${r.hits.length}</span></div>
+      ${r.hits.slice(0,6).map(h=>`<div class="ln" onclick="openHit('${esc(r.name)}',${h.i})">${mark(h.text.slice(0,160),q)}</div>`).join("")}
+      ${r.hits.length>6?`<div class="ln" style="cursor:default">…+${r.hits.length-6}</div>`:""}
+    </div>`).join("");
+}
+function mark(text,q){
+  const rx=new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"gi");
+  return esc(text).replace(new RegExp(rx.source,"gi"),m=>`<mark>${m}</mark>`);
+}
+function highlightIn(root,q){
+  if(!q)return;
+  const rx=new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"gi");
+  const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  const targets=[];
+  while(w.nextNode()){rx.lastIndex=0;if(rx.test(w.currentNode.nodeValue))targets.push(w.currentNode);}
+  targets.forEach(n=>{
+    const frag=document.createDocumentFragment();let last=0,m;rx.lastIndex=0;
+    while((m=rx.exec(n.nodeValue))){
+      frag.appendChild(document.createTextNode(n.nodeValue.slice(last,m.index)));
+      const k=document.createElement("mark");k.textContent=m[0];frag.appendChild(k);
+      last=m.index+m[0].length;
+    }
+    frag.appendChild(document.createTextNode(n.nodeValue.slice(last)));
+    n.parentNode.replaceChild(frag,n);
+  });
+}
+async function openHit(name,lineIdx){
+  await loadDoc(name);
+  const first=document.querySelector("#main mark");
+  if(first)first.scrollIntoView({behavior:"smooth",block:"center"});
+}
+function onSearch(){
+  const q=document.getElementById("q").value.trim();
+  document.getElementById("sbox").classList.toggle("has",!!q);
+  S.q=q;renderSide();
+  if(q)renderResults(q);
+  else if(S.cur)renderDoc(S.cur);
+  else document.getElementById("main").innerHTML=`<div class="empty">${T("pick")}</div>`;
+}
+function clearSearch(){document.getElementById("q").value="";onSearch();}
 async function refresh(){
   if(!S.cfg?.token){notify(T("connectFirst"),"err");return;}
-  try{S.docs={};await loadList();renderSide();if(S.cur)await loadDoc(S.cur,true);notify(T("refreshed"),"ok");}
+  try{S.docs={};await loadList();renderSide();if(S.cur)await loadDoc(S.cur,true);await loadAllDocs();if(S.q)renderResults(S.q);renderSide();notify(T("refreshed"),"ok");}
   catch(e){notify(T("loadFail")+": "+e.message,"err");}
 }
 
@@ -245,6 +346,7 @@ function showApp(){
   document.getElementById("app").style.display="block";
   renderSide();
   if(!S.cur&&S.list.length)loadDoc(S.list[0].name);
+  loadAllDocs().then(renderSide);   // 后台预取全部，搜索才能跨档；不阻塞首屏
 }
 let _nt;
 function notify(msg,type=""){const el=document.getElementById("notif");el.textContent=msg;el.className=`notif show ${type}`;clearTimeout(_nt);_nt=setTimeout(()=>el.classList.remove("show"),2600);}
