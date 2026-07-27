@@ -71,6 +71,14 @@ mark{background:rgba(212,175,55,.4);color:inherit;border-radius:2px;padding:0 1p
   #side .doc{margin-bottom:0}
   #main{padding:20px 16px;width:100%}
 }
+  .grp{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;
+       margin:14px 0 6px;padding:4px 6px;border-radius:6px;
+       font-size:.78rem;font-weight:700;letter-spacing:.04em;opacity:.72}
+  .grp:hover{background:rgba(128,128,128,.10);opacity:1}
+  .grp .caret{font-size:.7rem;width:10px}
+  .grp .gname{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .grp .gcount{font-size:.7rem;font-weight:600;opacity:.55;
+       padding:1px 6px;border-radius:999px;background:rgba(128,128,128,.14)}
 </style>
 </head>
 <body>
@@ -105,6 +113,7 @@ mark{background:rgba(212,175,55,.4);color:inherit;border-radius:2px;padding:0 1p
 /* ═══ 双语（与导航站共享 pha-lang）═══ */
 let lang=(()=>{try{return localStorage.getItem("pha-lang")==="en"?"en":"zh"}catch(e){return "zh"}})();
 const DICT={
+  grpMisc:["未归类","Uncategorized"],
   title:["工具箱","Toolbox"],refresh:["↻ 刷新","↻ Refresh"],connect:["连接","Connect"],
   pick:["← 选择一个主题档","← Pick a topic doc"],sop:["整理归纳 SOP（本库说明）","Curation SOP (about this vault)"],
   connectFirst:["请先连接 GitHub","Connect GitHub first"],loading:["加载中…","Loading…"],
@@ -121,7 +130,8 @@ function applyStatic(){document.querySelectorAll("[data-i18n]").forEach(el=>{el.
 function toggleLang(){lang=lang==="zh"?"en":"zh";try{localStorage.setItem("pha-lang",lang)}catch(e){}applyStatic();renderSide();}
 function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
-let S={cfg:null,list:[],docs:{},cur:null,idx:{}};
+let S={cfg:null,list:[],docs:{},cur:null,idx:{},grp:{},grpOrder:[],
+  fold:(()=>{try{return JSON.parse(localStorage.getItem("toolbox_fold"))||{}}catch(e){return {}}})()};
 
 /* ═══ GitHub 读取（全家标准 idiom：UTF-8 安全 base64；本 app 只读不写）═══ */
 async function ghApi(url){
@@ -137,14 +147,18 @@ async function loadList(){
   const dir=await ghApi(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?_=${Date.now()}`);
   const files=dir.filter(f=>f.type==="file"&&/\.md$/i.test(f.name));
   /* INDEX.md 提供描述；README 置顶；INDEX 本身不列（它就是侧栏） */
-  S.idx={};
+  S.idx={}; S.grp={}; S.grpOrder=[];
   const idxFile=files.find(f=>f.name.toUpperCase()==="INDEX.MD");
   if(idxFile){
     try{
       const raw=b64utf8((await ghApi(idxFile.url)).content);
+      /* INDEX.md 里的 ## 标题就是分类，之前被丢掉了，侧栏才平铺成一长条 */
+      let cur="";
       raw.split("\n").forEach(l=>{
+        const h=l.match(/^##\s+(.+?)\s*$/);
+        if(h){ cur=h[1].replace(/[（(].*?[）)]\s*$/,"").trim(); if(!S.grpOrder.includes(cur))S.grpOrder.push(cur); return; }
         const m=l.match(/^\s*-\s*\[.*?\]\((.*?)\)\s*(?:—|-)\s*(.*)$/);
-        if(m)S.idx[m[1].trim()]=m[2].trim();
+        if(m){ const f=m[1].trim(); S.idx[f]=m[2].trim(); if(cur)S.grp[f]=cur; }
       });
     }catch(e){}
   }
@@ -232,15 +246,31 @@ function dispName(f){
   if(md){const m=md.match(/^#\s+(.+)$/m);if(m)return m[1].trim();}
   return f.name.replace(/\.md$/i,"");
 }
+function toggleGrp(g){ S.fold[g]=!S.fold[g]; try{localStorage.setItem("toolbox_fold",JSON.stringify(S.fold))}catch(e){} renderSide(); }
 function renderSide(){
   const el=document.getElementById("doclist");
   const hits=S.q?Object.fromEntries(searchHits(S.q).map(r=>[r.name,r.hits.length])):null;
   const list=hits?S.list.filter(f=>hits[f.name]):S.list;
-  el.innerHTML=list.length?list.map(f=>`
+  if(!list.length){ el.innerHTML=`<div class="empty">${S.q?T("srNone"):T("empty")}</div>`; return; }
+  const card=f=>`
     <div class="doc ${S.cur===f.name?"on":""}" onclick="loadDoc('${esc(f.name)}')">
       <div class="nm">${hits?`<span class="hit">${hits[f.name]}</span>`:""}${/^README/i.test(f.name)?"📖 ":"📁 "}${esc(dispName(f))}</div>
       ${S.idx[f.name]?`<div class="ds">${esc(S.idx[f.name])}</div>`:""}
-    </div>`).join(""):`<div class="empty">${S.q?T("srNone"):T("empty")}</div>`;
+    </div>`;
+  const pinned=list.filter(f=>/^README/i.test(f.name));            /* README 不进分类，永远置顶 */
+  const rest=list.filter(f=>!/^README/i.test(f.name));
+  const buckets=new Map();
+  (S.grpOrder||[]).forEach(g=>buckets.set(g,[]));
+  rest.forEach(f=>{ const g=(S.grp||{})[f.name]||T("grpMisc"); if(!buckets.has(g))buckets.set(g,[]); buckets.get(g).push(f); });
+  let h=pinned.map(card).join("");
+  for(const [g,arr] of buckets){
+    if(!arr.length) continue;
+    const folded=!S.q&&S.fold[g];      /* 搜索时一律展开，否则会以为没搜到 */
+    h+=`<div class="grp ${folded?"fold":""}" onclick="toggleGrp('${esc(g).replace(/'/g,"&#39;")}')">
+          <span class="caret">${folded?"\u25b8":"\u25be"}</span><span class="gname">${esc(g)}</span><span class="gcount">${arr.length}</span>
+        </div>${folded?"":arr.map(card).join("")}`;
+  }
+  el.innerHTML=h;
 }
 function renderDoc(name){
   document.getElementById("main").innerHTML=mdRender(S.docs[name]||"");
