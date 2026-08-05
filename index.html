@@ -92,9 +92,15 @@ button,a,summary,label,[role="button"],[onclick]{
   -webkit-tap-highlight-color:transparent;
 }
 :focus-visible{outline:2px solid currentColor;outline-offset:2px}
+
+/* ===== 阅读进度条（取自 toolbox/design-vault 模式 #23；整页版）===== */
+#readprog{position:fixed;top:0;left:0;right:0;height:3px;z-index:99;pointer-events:none;background:transparent}
+#readprog i{display:block;height:100%;width:0;background:var(--accent);
+  transition:width .08s linear;will-change:width}
 </style>
 </head>
 <body>
+<div id="readprog" aria-hidden="true"><i></i></div>
 <header>
   <h1 data-i18n="title">工具箱</h1>
   <span class="spacer"></span>
@@ -289,6 +295,7 @@ function renderDoc(name){
   document.getElementById("main").innerHTML=mdRender(S.docs[name]||"");
   if(S.q)highlightIn(document.getElementById("main"),S.q);   // 从搜索结果点进来时保留高亮
   renderSide();
+  if(window.__readprogUpdate)window.__readprogUpdate();       // 换文档后长度变了，重算进度
 }
 
 /* ═══ 库内全文搜索 ═══
@@ -413,6 +420,25 @@ applyStatic();
       showApp();
     }else if(!S.list.length){document.getElementById("cfg").classList.add("show");}
   }catch(e){console.warn("Auto-connect failed:",e);if(!S.list.length){document.getElementById("cfg").classList.add("show");}}
+})();
+
+/* ===== 阅读进度条（design-vault #23）=====
+   判据：分母是 scrollHeight - clientHeight，不是 scrollHeight —— 写错就永远到不了 100% */
+(function(){
+  var bar = document.querySelector('#readprog i');
+  if(!bar) return;
+  var ticking = false;
+  function update(){
+    var el = document.documentElement;
+    var max = el.scrollHeight - el.clientHeight;
+    bar.style.width = (max <= 0 ? 0 : (el.scrollTop / max) * 100) + '%';
+    ticking = false;
+  }
+  function onScroll(){ if(!ticking){ ticking = true; requestAnimationFrame(update); } }
+  addEventListener('scroll', onScroll, {passive:true});
+  addEventListener('resize', onScroll, {passive:true});
+  update();
+  window.__readprogUpdate = update;   // 文档切换后由 loadDoc 调一次
 })();
 </script>
 </body>
