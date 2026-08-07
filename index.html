@@ -20,6 +20,8 @@ header .spacer{flex:1}
 .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
 #wrap{display:flex;gap:16px;padding:0 22px 60px;align-items:flex-start}
 #side{width:280px;flex:none;position:sticky;top:14px}
+#side .grp-archived + .doc, #side .doc.archived{opacity:.62}
+#side .doc.archived .nm::before{content:"🗂 "}
 #side .doc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer;transition:box-shadow .15s}
 #side .doc:hover{box-shadow:0 4px 14px rgba(0,0,0,.07)}
 #side .doc.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
@@ -140,6 +142,8 @@ const DICT={
   empty:["Database 的 toolbox/ 目录还没有文档","No docs in Database toolbox/ yet"],
   updated:["更新于","Updated"],
   searchPh:["搜索库内全文…","Search all docs…"],
+  grpArchive:["🗂 归档区（已过时，不再维护）","🗂 Archive (outdated, unmaintained)"],
+  archiveDesc:["被模型进化淘汰或已被取代——留着是为了「查过且判无用」这个结论本身","Superseded as models evolved — kept so 'checked, found useless' stays on record"],
   srHead:["条命中","hits"],srNone:["没有匹配","No matches"],srIn:["在","in"],
   srTip:["点任意一行跳到原文","Click any line to jump to it"]
 };
@@ -181,10 +185,25 @@ async function loadList(){
       });
     }catch(e){}
   }
-  const rest=files.filter(f=>!/^(INDEX)\.md$/i.test(f.name)&&!/^README\.md$/i.test(f.name))
+  const rest=files.filter(f=>!/^(INDEX|INDEX-detail)\.md$/i.test(f.name)&&!/^README\.md$/i.test(f.name))
                   .sort((a,b)=>a.name.localeCompare(b.name));
   const readme=files.find(f=>/^README\.md$/i.test(f.name));
-  S.list=[...(readme?[readme]:[]),...rest].map(f=>({name:f.name,path:f.path,sha:f.sha}));
+
+  /* 归档区：archive/ 是子目录，主列表只收 type==="file" 所以看不到它——单独拉一次。
+     站长 2026-08-07 要求：被模型进化淘汰的东西不进正文，但要能翻到。 */
+  let arch=[];
+  try{
+    const ad=await ghApi(`https://api.github.com/repos/${owner}/${repo}/contents/${path}/archive?_=${Date.now()}`);
+    arch=ad.filter(f=>f.type==="file"&&/\.md$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name));
+  }catch(e){}                                   /* 没有 archive/ 目录也不该报错 */
+  if(arch.length){
+    const G=T("grpArchive");
+    if(!S.grpOrder.includes(G))S.grpOrder.push(G);   /* 永远排最后 */
+    arch.forEach(f=>{ S.grp[f.name]=G; if(!S.idx[f.name])S.idx[f.name]=T("archiveDesc"); });
+    if(S.fold[G]===undefined)S.fold[G]=true;         /* 默认折叠：它是次要区 */
+  }
+
+  S.list=[...(readme?[readme]:[]),...rest,...arch].map(f=>({name:f.name,path:f.path,sha:f.sha}));
   try{localStorage.setItem("toolbox_cache",JSON.stringify({list:S.list,idx:S.idx,docs:S.docs}))}catch(e){}
 }
 async function loadDoc(name,force=false){
